@@ -1,5 +1,4 @@
 #include "header.h"
-//ADD CLIENT
 
 void add_client(client_struct *added_client) {
     for (int i=0; i< MAX_CLIENTS; i++) {
@@ -11,25 +10,195 @@ void add_client(client_struct *added_client) {
 
 }
 
+void who_i_am(char *s, int fd){
+    char *command_to_client = "1";
+    struct iovec message_sent_server[2];
+    message_sent_server[0].iov_base = command_to_client;
+    message_sent_server[0].iov_len = strlen(command_to_client);
+    message_sent_server[1].iov_base = s;
+    message_sent_server[1].iov_len = strlen(s);
+    writev(fd, message_sent_server, 2);
+} 
+
+void send_list_clients(int fd) {
+    int i = 0;
+    char s[64];
+    char *command_to_client = "2";
+    struct iovec message_sent_server[2];
+    for (i = 0; i < MAX_CLIENTS; i++){
+        if (clients[i] && (clients[i]->state == 0)){
+            sprintf(s, "ID: %d | Name: %s | \n\r", clients[i]->client_id, clients[i] ->username);
+            message_sent_server[0].iov_base = command_to_client;
+            message_sent_server[0].iov_len = strlen(command_to_client);
+            message_sent_server[1].iov_base = s;
+            message_sent_server[1].iov_len = strlen(s);
+            writev(fd, message_sent_server, 2);
+
+        }
+
+    }
+}
+
+int search_client_nickname(char *s) {
+    int i = 0;
+    int cont = 0;
+    char *command_to_client = "3";
+    struct iovec message_sent_server[2];
+    for (i = 0; i < MAX_CLIENTS; i++){
+
+        if (clients[i]) {
+            if (strcmp(clients[i]->username,s) == 0){
+            return 1;
+            }
+        }
+    }
+    return 0;
+
+}
+
+void let_know() {
+
+}
+void store_data(const char *data) {
+    FILE *fp = fopen("Server_log.txt", "ab");
+    if (fp != NULL)
+    {
+        fputs(data, fp);
+        fclose(fp);
+    }
+}
+
+void client_log_off(int fd) {
+    int i;
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i]) {
+            if(clients[i]->fd == fd){
+                clients[i] = NULL;
+            }
+        }
+    }
+}
+
 void *chat(void * arg ){
+
+
+    char buff_out[1024];
+    char buff_in[1024];
+    int start = 0;
+
 
     // MESSAGE TIME
     time_t t;
     struct tm *tm;
-    char chat_date[100], chat_hour[100];
+    char chat_date[100];
     t=time(NULL);
     tm=localtime(&t);
     strftime(chat_date, 128, "%d/%m/%Y %H:%M:%S", tm);
-    printf("%s", chat_date);
+    printf("%s ", chat_date);
 
     // ID CLIENT
     client_struct *client = (client_struct *) arg;
-    printf("Client connected");
+    printf("Client connected ");
     printf(" ID %d\n", client -> client_id);
-    client->state = 0;
+    client->state = 0; //Idle
 
-    //read with the socket send from client
-    //write to client
+    client_data *args = (client_data *)arg;
+    struct iovec message_recieved_client[2];
+    char buffo1[1];
+    char buffo2[512];
+    char *message_from_client = NULL;
+    char *get_client_value1 = NULL;
+    char *get_client_value2 = NULL;
+    char command_from_client;
+    char data[512];
+    
+    message_recieved_client[0].iov_base = buffo1;
+    message_recieved_client[0].iov_len = sizeof(buffo1);
+    message_recieved_client[1].iov_base = buffo2;
+    message_recieved_client[1].iov_len = sizeof(buffo2);
+    while (readv(client->fd, message_recieved_client, 2) > 0 ){
+        
+        printf("\n");
+        get_client_value1 = message_recieved_client[0].iov_base;
+        get_client_value2 = message_recieved_client[1].iov_base;
+        
+        command_from_client = get_client_value1[0];
+        message_from_client = message_recieved_client[1].iov_base;
+        printf("Mensaje de cliente recibido\n");
+        printf("Comando: \n");
+        printf("%c \n",command_from_client);
+        printf("Entrada: \n");
+        printf("%s \n",message_from_client);
+        
+
+
+        switch (command_from_client)
+        {
+            case '1':
+                strcpy(client->username,message_from_client);
+                t=time(NULL);
+                tm=localtime(&t);
+                strftime(chat_date, 128, "%d/%m/%Y %H:%M:%S", tm);
+                sprintf(data, "%s Usuario: %s asignado nickname \n",chat_date,client->username);
+                printf ("%s",data);
+                store_data(data);
+                who_i_am(message_from_client,client->fd);
+                memset(message_recieved_client[1].iov_base,0,strlen(message_recieved_client[1].iov_base));
+                memset(message_recieved_client[0].iov_base,0,strlen(message_recieved_client[0].iov_base));
+                break;
+            
+            case '2':
+                t=time(NULL);
+                tm=localtime(&t);
+                strftime(chat_date, 128, "%d/%m/%Y %H:%M:%S", tm);
+                sprintf(data, "%s Usuario: %s solicito lista \n",chat_date,client->username);
+                printf("%s",data);
+                store_data(data);
+                send_list_clients(client->fd);
+                memset(message_recieved_client[1].iov_base,0,strlen(message_recieved_client[1].iov_base));
+                memset(message_recieved_client[0].iov_base,0,strlen(message_recieved_client[0].iov_base));
+                break;
+            
+            case '3':
+                t=time(NULL);
+                tm=localtime(&t);
+                strftime(chat_date, 128, "%d/%m/%Y %H:%M:%S", tm);
+                sprintf(data, "%s Usuario: %s solicito chatear con: %s \n",chat_date,client->username,message_from_client);
+                printf("%s", data);
+                store_data(data);
+                if (search_client_nickname(message_from_client)){
+                    printf("Cliente existe\n");
+                } else {
+                    printf("Cliente no encontrado");
+                }
+                //podria haber hecho una query con el fd del otro cliente para asegurar que se repitan nombres
+                // si search client devuelve positivo , confirmo chat al usuario
+                let_know();
+                memset(message_recieved_client[1].iov_base,0,strlen(message_recieved_client[1].iov_base));
+                memset(message_recieved_client[0].iov_base,0,strlen(message_recieved_client[0].iov_base));
+                break;
+
+            // case '5':
+            //recibe mensaje del cliente para otro cliente
+            
+            case '4':
+                t=time(NULL);
+                tm=localtime(&t);
+                strftime(chat_date, 128, "%d/%m/%Y %H:%M:%S", tm);
+                sprintf(data, "%s Usuario: %s solicito desconexion \n",chat_date,client->username);
+                printf("%s", data);
+                store_data(data);
+                client_log_off(client->fd);
+                memset(message_recieved_client[1].iov_base,0,strlen(message_recieved_client[1].iov_base));
+                memset(message_recieved_client[0].iov_base,0,strlen(message_recieved_client[0].iov_base));
+                break;
+            default:
+                break;
+            }
+    printf("\n");
+    }
+    close (client->fd);
+
 } 
 int main(int argc, char** argv) {
  
@@ -88,13 +257,10 @@ int main(int argc, char** argv) {
         // ADD CLIENT TO QUEUE AND CREATE THREAD
         add_client(client);
         pthread_create(&thread, NULL, &chat, (void *)client);
-        sleep(3);
+        sleep(1);
 
     }
   
-    close(sockid);
- 
-    return 0;
  
 err:
     fprintf(stderr,"%d %s %s\n",errno,error,strerror(errno));
